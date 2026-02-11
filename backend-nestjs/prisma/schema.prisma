@@ -1,0 +1,133 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// -----------------------------------------------------------------------------
+// Enums
+// -----------------------------------------------------------------------------
+
+enum AssetType {
+  LAPTOP
+  SERVER
+  SMART_AC
+  ROUTER
+  SWITCH
+  UPS
+  OTHER
+}
+
+enum DeviceStatus {
+  ONLINE
+  OFFLINE
+  MAINTENANCE
+  RETIRED
+  UNKNOWN
+}
+
+enum SensorType {
+  TEMPERATURE
+  HUMIDITY
+  LOAD_CELL
+  VIBRATION
+  VOLTAGE
+  CURRENT
+  OTHER
+}
+
+// -----------------------------------------------------------------------------
+// Models
+// -----------------------------------------------------------------------------
+
+/// Varlık (Inventory Item)
+/// Bir envanter öğesidir (Laptop, Sunucu veya Akıllı Klima).
+model Asset {
+  id            String    @id @default(uuid())
+  serialNumber  String    @unique
+  assetType     AssetType @default(OTHER)
+  purchaseDate  DateTime?
+  warrantyEnd   DateTime?
+  assignedUser  String?   // Could be a User relation in a full system
+  location      String?   // e.g., "Server Room 1", "Floor 2, Desk 4"
+
+  // Relations
+  deviceAgent   DeviceAgent?
+  sensors       IoT_Sensor[]
+
+  // Metadata
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([serialNumber])
+  @@index([assignedUser])
+  @@index([location])
+  @@map("assets")
+}
+
+/// Yazılım Ajanı (Software Agent - Rust)
+/// Asset ile 1-1 ilişkilidir (Her bilgisayar bir envanterdir).
+model DeviceAgent {
+  id          String       @id @default(uuid())
+  uuid        String       @unique // Hardware ID / Agent Fingerprint
+  osVersion   String?
+  ipAddress   String?
+  lastSeen    DateTime     @default(now())
+  status      DeviceStatus @default(UNKNOWN)
+
+  // Relation to Asset (1-1)
+  assetId     String       @unique
+  asset       Asset        @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([uuid])
+  @@index([status])
+  @@index([lastSeen])
+  @@map("device_agents")
+}
+
+/// Donanım (IoT Sensor - ESP32 etc.)
+/// Asset ile 1-n ilişkili olabilir (Bir sunucu odasında birden fazla sensör olabilir).
+model IoT_Sensor {
+  id               String        @id @default(uuid())
+  sensorType       SensorType
+  mqttTopic        String        @unique
+  calibrationValue Float         @default(1.0)
+  description      String?
+
+  // Relation to Asset (Many-to-One)
+  assetId          String?
+  asset            Asset?        @relation(fields: [assetId], references: [id], onDelete: SetNull)
+
+  // Relation to Telemetry (One-to-Many)
+  telemetry        TelemetryData[]
+
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([sensorType])
+  @@map("iot_sensors")
+}
+
+/// Zaman Serisi Verisi (Telemetry)
+/// IoT sensörlerinden gelen veriler. TimescaleDB hypertable mantığına uygun.
+model TelemetryData {
+  timestamp DateTime
+  value     Float
+
+  // Relation to Sensor
+  sensorId  String
+  sensor    IoT_Sensor @relation(fields: [sensorId], references: [id], onDelete: Cascade)
+
+  // Composite Primary Key for TimescaleDB optimization (partitioning by time)
+  @@id([sensorId, timestamp])
+
+  // Index for querying ranges efficiently
+  @@index([timestamp(sort: Desc)])
+  @@map("telemetry_data")
+}

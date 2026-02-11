@@ -21,3 +21,5 @@ dist-ssr
 *.sln
 *.sw?
 .env
+agent-rust/target/
+agent-rust/target/

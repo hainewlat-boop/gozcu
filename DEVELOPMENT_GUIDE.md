@@ -4,106 +4,133 @@ This guide covers the setup and development workflow for the Remote Operations P
 
 ## Project Structure
 
-- `backend-go/`: The central server (Golang + Fiber).
-- `agent-go/`: The client software running on devices (Golang).
+- `backend-go/`: MVP Backend (Golang + Fiber + WebSocket).
+- `agent-go/`: MVP Agent (Golang).
+- `backend-nestjs/`: Production Backend (NestJS + Prisma + MQTT + Socket.io).
+- `agent-rust/`: Production Agent (Rust + MQTT + Screen Capture).
+- `iot-esp32/`: IoT Firmware (C++ / Arduino).
 - `REMOTE_OPS_DESIGN.md`: Architectural design document.
 - `REMOTE_OPS_SPECS.json`: API and Protocol specifications.
 
-## Prerequisites
+## Stack Selection
 
-- Go 1.21+
-- Node.js 18+ (for UI)
-- Docker (optional, for database)
+- **MVP (Prototype):** Use `backend-go` and `agent-go` for a quick WebSocket-based test.
+- **Production (Phase 1-4):** Use `backend-nestjs`, `agent-rust`, and `iot-esp32`.
 
-## Running the Backend
+---
 
-The backend server manages WebSocket connections and exposes the REST API.
+## 1. Running the Production Backend (NestJS)
 
-1. Navigate to the backend directory:
+The NestJS backend provides the MQTT Broker (Port 1883) and Signaling Gateway (Socket.io).
+
+### Prerequisites
+- Node.js 18+
+- PostgreSQL (TimeScaleDB enabled recommended)
+- Redis (Optional for scaling)
+
+### Setup
+1. Navigate to the directory:
+   ```bash
+   cd backend-nestjs
+   ```
+
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Configure Environment:
+   Create a `.env` file with your database connection string:
+   ```env
+   DATABASE_URL="postgresql://user:password@localhost:5432/remote_ops_db?schema=public"
+   ```
+
+4. Generate Prisma Client:
+   ```bash
+   npx prisma generate
+   ```
+
+5. Run Migrations:
+   ```bash
+   npx prisma migrate dev --name init
+   ```
+
+6. Start the Server:
+   ```bash
+   npm run start:dev
+   ```
+
+   - API/Socket.io: `http://localhost:3000`
+   - MQTT Broker: `tcp://localhost:1883`
+
+---
+
+## 2. Running the Production Agent (Rust)
+
+The Rust agent connects to the NestJS backend via MQTT to send telemetry and screen capture data.
+
+### Prerequisites
+- Rust (Cargo)
+- System libraries for screen capture (e.g., `libxcb`, `libx11` on Linux)
+
+### Setup
+1. Navigate to the directory:
+   ```bash
+   cd agent-rust
+   ```
+
+2. Run the Agent:
+   ```bash
+   cargo run
+   ```
+
+   The agent will:
+   - Connect to MQTT `localhost:1883`.
+   - Publish specs to `agent/{uuid}/specs`.
+   - Publish CPU usage every 5s to `sensors/{uuid}_cpu/data`.
+   - Start a screen capture loop (logs only for now).
+
+---
+
+## 3. Running the IoT Firmware (ESP32)
+
+### Prerequisites
+- PlatformIO (VSCode Extension or CLI)
+
+### Setup
+1. Navigate to `iot-esp32`.
+2. Update `src/main.cpp`:
+   - Set `WIFI_SSID` and `WIFI_PASSWORD`.
+   - Set `MQTT_SERVER` to your backend IP.
+3. Build and Upload:
+   ```bash
+   pio run -t upload
+   ```
+4. Monitor Serial Output:
+   ```bash
+   pio device monitor
+   ```
+
+---
+
+## 4. Running the MVP (Go Stack) - Legacy/Alternative
+
+If you prefer the simpler Go stack:
+
+1. **Backend:**
    ```bash
    cd backend-go
-   ```
-
-2. Run the server:
-   ```bash
    go run main.go
    ```
 
-   The server will start on `http://localhost:3000`.
-   - WebSocket: `ws://localhost:3000/ws`
-   - API: `http://localhost:3000/api/v1/devices`
-
-## Running the Agent
-
-The agent simulates a device connecting to the platform.
-
-1. Open a new terminal.
-2. Navigate to the agent directory:
+2. **Agent:**
    ```bash
    cd agent-go
-   ```
-
-3. Run the agent:
-   ```bash
    go run main.go
    ```
-
-   You should see logs indicating a successful WebSocket connection and periodic heartbeat/telemetry transmission.
-
-## Development Recommendations
-
-### 1. Code Quality & Linting
-- Use **golangci-lint** for static analysis.
-  ```bash
-  golangci-lint run
-  ```
-- Follow the **Standard Go Project Layout**.
-
-### 2. Hot Reload
-- Use **Air** for live reloading during backend development.
-  ```bash
-  # Install Air
-  go install github.com/cosmtrek/air@latest
-  # Run
-  air
-  ```
-
-### 3. Testing
-- Use **testify** for assertions.
-  ```go
-  import "github.com/stretchr/testify/assert"
-  ```
-- Write table-driven tests for logic components (e.g., Command parsing).
-
-### 4. Database Integration
-- The current implementation uses in-memory storage.
-- For production, integrate **PostgreSQL** with **pgx** driver.
-- Use **golang-migrate** for schema migrations.
-
-### 5. Security (Zero Trust)
-- Implement **mTLS** using `crypto/tls`.
-- Generate client certificates for each agent during enrollment.
-- Validate `CommonName` or `SAN` against the device inventory.
-
-### 6. WebRTC Streaming (Next Steps)
-- Integrate **Pion WebRTC** (`github.com/pion/webrtc/v3`) for screen streaming.
-- The agent will act as a WebRTC peer.
-- The backend will act as a Signaling Server (exchanging SDP via WebSocket).
-
-### 7. Frontend Integration
-- The existing `vite-react-typescript-starter` can be adapted.
-- Use `useEffect` to establish a WebSocket connection to the backend.
-- Use `recharts` for visualizing telemetry data.
-
-## CI/CD Pipeline Suggestion
-
-1. **Lint & Test**: Run on every push.
-2. **Build**:
-   - `backend`: Build Docker image.
-   - `agent`: Cross-compile for Windows (`GOOS=windows`) and Linux (`GOOS=linux`).
-3. **Release**: Push binaries to a secure artifact storage (e.g., MinIO within the VLAN).
 
 ## Troubleshooting
 
-- **Connection Refused**: Ensure the backend is running before the agent.
-- **WebSocket Errors**: Check firewall rules if running on different machines.
+- **Rust Compilation Errors:** Ensure you have `pkg-config` and X11 development headers installed on Linux (`sudo apt install libxcb-shape0-dev libxcb-xfixes0-dev`).
+- **MQTT Connection Refused:** Ensure the NestJS backend is running and port 1883 is open.
+- **Database Errors:** Check `DATABASE_URL` in `backend-nestjs/.env`.

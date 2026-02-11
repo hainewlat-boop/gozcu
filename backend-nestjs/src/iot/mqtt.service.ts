@@ -100,6 +100,14 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
                 await this.processTelemetry(parts[1], payload);
             }
         }
+        // Inventory Weight Update: topic = "inventory/update/weight"
+        else if (topic === 'inventory/update/weight') {
+            const data = JSON.parse(payload);
+            if (data.sensor_id) {
+                // Treat sensor_id as the MQTT topic ID for lookup
+                await this.processTelemetry(data.sensor_id, payload);
+            }
+        }
 
       } catch (error) {
         this.logger.error('Error processing published message', error);

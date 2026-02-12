@@ -120,7 +120,10 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
       const data = JSON.parse(payloadStr);
       // Expected payload: { "value": 24.5, "timestamp": "2023-10-27T10:00:00Z" }
 
-      if (!data.value) return;
+      // Map 'weight' to 'value' if present (for ESP32 load cell)
+      const value = data.value !== undefined ? data.value : data.weight;
+
+      if (value === undefined || value === null) return;
 
       // Find sensor by MQTT Topic
       const sensor = await this.prisma.ioT_Sensor.findUnique({
@@ -136,7 +139,7 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
       await this.prisma.telemetryData.create({
         data: {
           sensorId: sensor.id,
-          value: parseFloat(data.value),
+          value: parseFloat(value),
           timestamp: data.timestamp ? new Date(data.timestamp) : new Date(),
         }
       });

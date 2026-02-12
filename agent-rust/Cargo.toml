@@ -1,0 +1,18 @@
+[package]
+name = "agent-rust"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sysinfo = "0.29.0"
+tokio = { version = "1.28.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+scrap = "0.5" # Screen capture (may need adjustment depending on OS, but scrap is cross-platform)
+rumqttc = "0.22.0" # MQTT Client for TCP 1883
+tokio-tungstenite = "0.20.0" # WebSocket for Signaling (Future)
+futures-util = "0.3.28" # For WebSocket streams
+log = "0.4"
+env_logger = "0.10"
+uuid = { version = "1.4", features = ["v4", "fast-rng", "macro-diagnostics"] }
+chrono = { version = "0.4", features = ["serde"] }

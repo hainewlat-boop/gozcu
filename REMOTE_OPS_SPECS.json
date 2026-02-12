@@ -1,0 +1,191 @@
+{
+  "project_name": "Remote Operations Platform",
+  "version": "1.0.0",
+  "roles": [
+    {
+      "role_id": "admin",
+      "name": "System Administrator",
+      "description": "Full access to all system features",
+      "permissions": ["*"]
+    },
+    {
+      "role_id": "operator",
+      "name": "Operator",
+      "description": "Can view devices and perform basic actions",
+      "permissions": [
+        "device.view",
+        "device.control.basic",
+        "alarm.view",
+        "alarm.ack"
+      ]
+    },
+    {
+      "role_id": "viewer",
+      "name": "Viewer",
+      "description": "Read-only access",
+      "permissions": [
+        "device.view",
+        "alarm.view"
+      ]
+    }
+  ],
+  "permissions": [
+    "device.view",
+    "device.control.basic",
+    "device.control.full",
+    "device.shell",
+    "device.file_transfer",
+    "system.settings",
+    "user.manage",
+    "audit.view"
+  ],
+  "device_schema": {
+    "type": "object",
+    "properties": {
+      "id": { "type": "string", "format": "uuid" },
+      "hostname": { "type": "string" },
+      "ip_address": { "type": "string", "format": "ipv4" },
+      "mac_address": { "type": "string", "pattern": "^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$" },
+      "os_info": {
+        "type": "object",
+        "properties": {
+          "platform": { "type": "string", "enum": ["windows", "linux", "darwin"] },
+          "distro": { "type": "string" },
+          "release": { "type": "string" },
+          "arch": { "type": "string" }
+        }
+      },
+      "agent_version": { "type": "string" },
+      "status": { "type": "string", "enum": ["online", "offline", "busy", "error"] },
+      "last_seen": { "type": "string", "format": "date-time" },
+      "tags": { "type": "array", "items": { "type": "string" } },
+      "groups": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "command_catalog": [
+    {
+      "id": "cmd_restart",
+      "name": "Restart System",
+      "command": "shutdown /r /t 0",
+      "os": ["windows"],
+      "risk_level": "high",
+      "requires_ack": true
+    },
+    {
+      "id": "cmd_restart_linux",
+      "name": "Restart System",
+      "command": "reboot",
+      "os": ["linux"],
+      "risk_level": "high",
+      "requires_ack": true
+    },
+    {
+      "id": "cmd_service_restart",
+      "name": "Restart Service",
+      "template": "systemctl restart {{service_name}}",
+      "os": ["linux"],
+      "parameters": [
+        { "name": "service_name", "type": "string", "required": true }
+      ]
+    }
+  ],
+  "websocket_events": {
+    "client_to_server": [
+      {
+        "event": "auth",
+        "payload": { "token": "string" }
+      },
+      {
+        "event": "subscribe",
+        "payload": { "channel": "string", "filter": "object" }
+      },
+      {
+        "event": "command_exec",
+        "payload": { "device_id": "uuid", "command": "string", "args": "array" }
+      },
+      {
+        "event": "webrtc_signal",
+        "payload": { "target_id": "uuid", "sdp": "object", "candidate": "object" }
+      }
+    ],
+    "server_to_client": [
+      {
+        "event": "device_update",
+        "payload": { "device_id": "uuid", "changes": "object" }
+      },
+      {
+        "event": "alarm_trigger",
+        "payload": { "alarm_id": "uuid", "severity": "string", "message": "string" }
+      },
+      {
+        "event": "command_result",
+        "payload": { "command_id": "uuid", "status": "string", "output": "string" }
+      }
+    ],
+    "agent_to_server": [
+      {
+        "event": "heartbeat",
+        "payload": { "timestamp": "int64", "load_avg": "float" }
+      },
+      {
+        "event": "telemetry",
+        "payload": { "cpu": "float", "ram": "float", "disk": "float" }
+      },
+      {
+        "event": "screen_thumbnail",
+        "payload": { "image_data": "base64", "format": "jpeg" }
+      }
+    ]
+  },
+  "alarm_rules": [
+    {
+      "id": "rule_high_cpu",
+      "name": "High CPU Usage",
+      "condition": "cpu_usage > 90 AND duration > 5m",
+      "severity": "warning",
+      "action": "notify_operator"
+    },
+    {
+      "id": "rule_device_offline",
+      "name": "Device Offline",
+      "condition": "status == 'offline' AND duration > 10m",
+      "severity": "critical",
+      "action": ["notify_admin", "email_alert"]
+    }
+  ],
+  "monitoring_walls": {
+    "schema": {
+      "id": "uuid",
+      "name": "string",
+      "layout": {
+        "rows": "integer",
+        "cols": "integer",
+        "cells": [
+          {
+            "row": "integer",
+            "col": "integer",
+            "device_id": "uuid"
+          }
+        ]
+      }
+    }
+  },
+  "api_routes": [
+    { "method": "GET", "path": "/api/v1/devices", "auth": "required", "scope": "device.view" },
+    { "method": "GET", "path": "/api/v1/devices/{id}", "auth": "required", "scope": "device.view" },
+    { "method": "POST", "path": "/api/v1/devices/{id}/command", "auth": "required", "scope": "device.control" },
+    { "method": "GET", "path": "/api/v1/audit-logs", "auth": "required", "scope": "audit.view" },
+    { "method": "POST", "path": "/api/v1/auth/login", "auth": "none" }
+  ],
+  "agent_protocol": {
+    "handshake": {
+      "step1": "Client connects with mTLS certificate",
+      "step2": "Server verifies certificate CN against whitelist",
+      "step3": "Server sends 'hello' with server_time",
+      "step4": "Client signs server_time with private key and sends back",
+      "step5": "Server verifies signature and grants access"
+    },
+    "heartbeat_interval": 30,
+    "reconnect_backoff": "exponential"
+  }
+}
